@@ -1,0 +1,28 @@
+# Local environment variables and credentials
+.env*
+!.env.example
+*.env
+*.key
+*.pem
+secrets/
+
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Build output
+build/
+dist/
+*.egg-info/
+
+# Editor settings and logs
+.idea/
+.vscode/
+*.log
