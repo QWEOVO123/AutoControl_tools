@@ -15,7 +15,7 @@ uv run my-ai-agent
 ```
 
 也可以使用 `uv run python -m my_ai_agent`，或保留原来的 `uv run python src/main.py`。
-输入 `exit` 退出。当前命令入口运行模型聊天；带工具的 Agent 工厂位于
+输入 `exit` 退出。当前命令入口运行带工具和会话记忆的 Agent；Agent 工厂位于
 `my_ai_agent.Agents.core.init_agent`。
 
 ## 项目结构
@@ -24,10 +24,40 @@ uv run my-ai-agent
 `Agents/` 存放 Agent，`LLM_init/` 初始化模型，`Tools/` 定义工具，
 `Prompts/system.md` 存放系统提示词。
 
+## 本地工具
+
+| 工具 | 用途 |
+| --- | --- |
+| `execute_shell` | 执行非交互命令，返回 stdout、stderr、退出码和超时状态 |
+| `list_directory` | 查看目录直接子项 |
+| `find_files` | 按 glob 检索文件名 |
+| `search_text` | 按字面文本或 Python 正则搜索文件内容，返回行号 |
+| `read_file` | 分段读取 UTF-8 文本，输出带行号 |
+| `write_file` | 创建文件，默认拒绝覆盖 |
+| `edit_file` | 精确替换，默认要求唯一匹配，保留 BOM 和换行风格 |
+| `get_current_time` / `get_system_info` / `multiply` | 时间、环境和乘法 |
+
+例如可以问：“找出模型初始化代码，说明调用流程”“运行 uv pip check”
+或“新建一个计算函数并运行验证”。相对路径基于启动命令所在目录。
+
+Windows Shell 优先使用 `pwsh`，否则使用 Windows PowerShell；其它系统使用 `/bin/sh`。
+每次 Shell 调用独立，默认超时 30 秒，最多 120 秒；超时会尝试终止进程树。
+输出分别限制 stdout/stderr 长度，不支持交互命令和后台服务。
+
+文件检索跳过凭据、常见缓存、虚拟环境和符号链接，不依赖额外安装 ripgrep。
+文本读取限 UTF-8、单文件最多 1 MiB；大文件或二进制文件需要专门处理。
+专用文件工具拒绝访问 `.env`、私钥、`secrets/` 和 Git 内部数据，`.env.example` 可读写。
+Shell 以当前用户权限运行；这些文件过滤和提示词约定不构成 Shell 沙箱或程序级审批机制。
+
+提示词参考 [OpenCode 公开提示词](https://github.com/anomalyco/opencode/blob/dev/packages/core/src/plugin/system-prompt/meta.txt)
+和 [工具文档](https://opencode.ai/docs/tools/)，按本项目实际工具重写，涵盖先调查后修改、专用工具优先、结果验证和凭据保护。
+Agent 初始化时还会加入实际工作目录、操作系统和 Python 解释器信息。
+
 ## 检查和构建
 
 ```powershell
 uv lock --check
 uv pip check
 uv build
+uv run python -m unittest discover -s tests -v
 ```

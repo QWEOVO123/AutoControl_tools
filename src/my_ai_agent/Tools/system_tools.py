@@ -1,5 +1,7 @@
 from datetime import datetime
 import platform
+from pathlib import Path
+import sys
 
 from langchain_core.tools import tool
 
@@ -17,6 +19,9 @@ def get_system_info() -> dict:
         "version": platform.version(),
         "machine": platform.machine(),
         "processor": platform.processor(),
+        "cwd": str(Path.cwd()),
+        "python_version": platform.python_version(),
+        "python_executable": sys.executable,
     }
 
 
