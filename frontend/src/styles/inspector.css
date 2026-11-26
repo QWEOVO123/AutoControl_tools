@@ -1,0 +1,140 @@
+.inspector {
+  width: 310px;
+  flex-shrink: 0;
+  background: #fff;
+  border-left: 1px solid var(--line);
+  padding: 24px 19px 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.inspector-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.inspector-heading > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #7e8598;
+}
+.inspector-heading strong {
+  font-size: 0.85rem;
+  font-weight: 550;
+  color: #535b6c;
+}
+.inspector-heading > div > span {
+  background: #f2f3f7;
+  border-radius: 4px;
+  padding: 2px 5px;
+  font-size: 0.65rem;
+}
+.inspector-description {
+  color: #a4a9b5;
+  font-size: 0.73rem;
+  margin-top: 7px;
+}
+.inspector-empty {
+  display: flex;
+  flex: 1;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  text-align: center;
+  color: #b5bac7;
+  padding-bottom: 60px;
+}
+.inspector-empty > svg {
+  margin-bottom: 20px;
+  stroke-width: 1.2;
+}
+.inspector-empty strong {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #858d9e;
+  margin-bottom: 10px;
+}
+.inspector-empty p {
+  font-size: 0.74rem;
+  line-height: 1.8;
+  max-width: 210px;
+}
+.tool-list {
+  padding: 23px 0;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.tool-card {
+  background: #fcfcfe;
+  border: 1px solid #e7e9f0;
+  border-radius: 8px;
+  margin-bottom: 11px;
+  overflow: hidden;
+}
+.tool-card summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 11px 12px;
+}
+.tool-card summary::-webkit-details-marker {
+  display: none;
+}
+.tool-card-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font:
+    500 0.72rem 'Cascadia Code',
+    Consolas,
+    monospace;
+  color: #646d80;
+}
+.tool-icon {
+  color: #9ba3b5;
+  display: flex;
+}
+.tool-card.running summary > svg {
+  color: #c68b62;
+}
+.tool-detail {
+  border-top: 1px solid #e9ebf1;
+  padding: 12px;
+  font-size: 0.72rem;
+}
+.field-label {
+  font-size: 0.67rem;
+  color: #a0a7b8;
+}
+.tool-detail pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 280px;
+  overflow: auto;
+  color: #6b758b;
+  font-size: 0.67rem;
+  line-height: 1.65;
+  margin: 7px 0 14px;
+}
+.tool-detail .muted {
+  font-size: 0.64rem;
+}
+.inspector-footer {
+  border-top: 1px solid #eef0f5;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #a4acbc;
+  font-size: 0.65rem;
+  min-height: 58px;
+}
+.inspector-footer .tiny-square {
+  background: #b9c3d2;
+  width: 5px;
+  height: 5px;
+}

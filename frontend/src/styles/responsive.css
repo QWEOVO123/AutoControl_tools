@@ -1,0 +1,441 @@
+@media (min-width: 1550px) {
+  .sidebar {
+    width: 274px;
+    padding-left: 22px;
+    padding-right: 22px;
+  }
+  .page-header {
+    padding: 0 42px;
+  }
+  .welcome {
+    padding-top: 13vh;
+  }
+  .welcome h1 {
+    font-size: 2.3rem;
+  }
+  .suggestion-grid {
+    margin-top: 43px;
+  }
+  .suggestion-card {
+    padding-top: 21px;
+    padding-bottom: 21px;
+  }
+  .inspector {
+    width: 340px;
+    padding: 25px;
+  }
+  .composer-area {
+    padding-bottom: 27px;
+  }
+}
+@media (max-width: 1150px) {
+  .sidebar {
+    width: 224px;
+    padding-left: 13px;
+    padding-right: 13px;
+  }
+  .sidebar .brand {
+    font-size: 1.03rem;
+  }
+  .inspector {
+    width: 280px;
+    padding: 20px 14px 0;
+  }
+  .chat-workspace:has(.inspector) .suggestion-grid {
+    grid-template-columns: 1fr;
+  }
+  .chat-workspace:has(.inspector) .welcome {
+    padding-top: 35px;
+  }
+  .chat-workspace:has(.inspector) .welcome-capabilities {
+    gap: 12px;
+  }
+  .chat-workspace:has(.inspector) .keyboard-hint {
+    display: none;
+  }
+  .login-story {
+    padding: 40px;
+  }
+  .login-form-side {
+    padding: 50px 40px;
+  }
+  .welcome {
+    padding-left: 26px;
+    padding-right: 26px;
+  }
+  .composer-area {
+    padding-left: 26px;
+    padding-right: 26px;
+  }
+  .welcome h1 {
+    font-size: 1.8rem;
+  }
+}
+@media (max-width: 900px) {
+  .inspector {
+    position: absolute;
+    right: 0;
+    top: 73px;
+    bottom: 0;
+    width: 320px;
+    z-index: 15;
+    box-shadow: -10px 0 40px #1f2b4e12;
+  }
+  .page-header {
+    padding: 0 23px;
+  }
+  .model-pill {
+    font-size: 0.67rem;
+  }
+  .header-actions {
+    gap: 12px;
+  }
+  .header-breadcrumb {
+    font-size: 0.8rem;
+  }
+  .login-page {
+    grid-template-columns: 42% 58%;
+  }
+  .login-story {
+    padding: 33px 28px;
+  }
+  .login-story h1 {
+    font-size: 2.4rem;
+  }
+  .login-story-content > p {
+    font-size: 0.83rem;
+  }
+  .login-feature {
+    font-size: 0.77rem;
+  }
+  .login-story .brand {
+    font-size: 1rem;
+  }
+  .login-form-side {
+    padding: 40px 30px;
+  }
+  .login-form-wrap h2 {
+    font-size: 1.55rem;
+  }
+  .settings-content {
+    padding: 35px 30px;
+  }
+  .settings-content > h1 {
+    font-size: 1.5rem;
+  }
+  .settings-section {
+    padding: 24px;
+  }
+  .tool-catalog {
+    grid-template-columns: 1fr;
+  }
+  .keyboard-hint {
+    display: none;
+  }
+}
+@media (max-width: 680px) {
+  .app-frame {
+    min-height: 400px;
+  }
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 40;
+    width: 260px;
+    transform: translateX(-100%);
+    transition: transform 0.2s;
+  }
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+  .mobile-menu {
+    display: flex;
+    position: fixed;
+    top: 16px;
+    left: 13px;
+    z-index: 35;
+    color: #737e91;
+  }
+  .sidebar-shade {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: #131d3c66;
+    z-index: 39;
+  }
+  .page-header {
+    height: 64px;
+    min-height: 64px;
+    padding-left: 56px;
+    padding-right: 15px;
+    gap: 8px;
+  }
+  .header-breadcrumb {
+    font-size: 0.77rem;
+    gap: 8px;
+  }
+  .header-breadcrumb > span:first-child,
+  .breadcrumb-slash {
+    display: none;
+  }
+  .header-actions {
+    gap: 6px;
+  }
+  .model-pill {
+    font-size: 0.62rem;
+    padding: 6px 7px;
+    max-width: 155px;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .welcome {
+    padding: 44px 24px 20px;
+  }
+  .welcome-symbol {
+    width: 50px;
+    height: 50px;
+    border-radius: 15px;
+    margin-bottom: 22px;
+  }
+  .welcome h1 {
+    font-size: 1.65rem;
+  }
+  .welcome .eyebrow {
+    font-size: 0.48rem;
+    letter-spacing: 0.09em;
+  }
+  .welcome > p {
+    font-size: 0.82rem;
+  }
+  .suggestion-grid {
+    margin-top: 29px;
+    gap: 10px;
+  }
+  .suggestion-card {
+    padding: 16px 13px;
+    min-height: 110px;
+  }
+  .suggestion-card > svg {
+    position: static;
+    width: 18px;
+    margin-bottom: 11px;
+  }
+  .suggestion-card strong {
+    font-size: 0.8rem;
+  }
+  .suggestion-card > span {
+    font-size: 0.67rem;
+  }
+  .welcome-capabilities {
+    font-size: 0.58rem;
+    gap: 14px;
+    margin-top: 20px;
+  }
+  .welcome-capabilities svg {
+    width: 11px;
+  }
+  .composer-area {
+    padding: 9px 15px 13px;
+  }
+  .composer {
+    padding: 13px 12px 9px;
+    border-radius: 10px;
+  }
+  .composer textarea {
+    font-size: 0.85rem;
+    min-height: 58px;
+  }
+  .composer-footer {
+    margin-top: 5px;
+  }
+  .composer-disclaimer {
+    font-size: 0.56rem;
+  }
+  .composer-context {
+    font-size: 0.61rem;
+    max-width: 65%;
+  }
+  .send-button {
+    height: 30px;
+    width: 30px;
+  }
+  .message-list {
+    padding: 26px 20px 17px;
+  }
+  .chat-message {
+    gap: 10px;
+    margin-bottom: 26px;
+  }
+  .avatar {
+    height: 28px;
+    width: 28px;
+    border-radius: 8px;
+    font-size: 0.77rem;
+  }
+  .message-author {
+    height: 26px;
+    font-size: 0.77rem;
+  }
+  .markdown-content,
+  .user-content {
+    font-size: 0.86rem;
+  }
+  .tool-summary span {
+    display: none;
+  }
+  .inspector {
+    top: 64px;
+    width: min(330px, 92vw);
+  }
+  .login-page {
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    overflow: auto;
+  }
+  .login-story {
+    padding: 28px 26px;
+    min-height: 110px;
+    flex-shrink: 0;
+  }
+  .login-story .brand {
+    font-size: 1rem;
+  }
+  .login-story-content,
+  .login-story-footer,
+  .login-grid {
+    display: none;
+  }
+  .login-form-side {
+    flex: 1;
+    min-height: 570px;
+    padding: 40px 30px 76px;
+    align-items: flex-start;
+  }
+  .login-form-wrap {
+    max-width: 370px;
+  }
+  .login-lock {
+    margin-bottom: 25px;
+  }
+  .login-description {
+    margin-bottom: 28px;
+  }
+  .login-form-side > footer {
+    left: 20px;
+    right: 20px;
+    bottom: 24px;
+  }
+  .settings-content {
+    padding: 28px 20px 45px;
+  }
+  .settings-content > .eyebrow {
+    font-size: 0.56rem;
+  }
+  .settings-content > h1 {
+    font-size: 1.45rem;
+  }
+  .settings-section {
+    padding: 21px 19px;
+  }
+  .environment-grid {
+    gap: 20px 15px;
+  }
+  .environment-grid dd {
+    font-size: 0.77rem;
+  }
+  .section-heading p {
+    font-size: 0.7rem;
+  }
+  .permission-note {
+    align-items: flex-start;
+    line-height: 1.7;
+  }
+  .settings-intro {
+    font-size: 0.78rem;
+    line-height: 1.8;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* Keep task controls and tool output readable on every screen. */
+.nav-item,
+.conversation-row > a,
+.conversation-menu button,
+.account-row strong,
+.tool-card-name,
+.tool-detail,
+.tool-detail pre,
+.tool-catalog code,
+.tool-catalog p,
+.environment-grid dd,
+.password-form .text-input,
+.login-form-wrap .text-input {
+  font-size: 0.875rem;
+}
+.markdown-content,
+.user-content {
+  font-size: 1rem;
+}
+
+.eyebrow,
+.brand small,
+.sidebar-section-label,
+.nav-count,
+.sidebar-empty,
+.workspace-card small,
+.account-row small,
+.model-pill,
+.welcome .eyebrow,
+.suggestion-card > span,
+.welcome-capabilities,
+.composer-context,
+.keyboard-hint,
+.composer-disclaimer,
+.help-note,
+.agent-tag,
+.tool-summary,
+.tool-summary span,
+.inspector-description,
+.inspector-empty p,
+.field-label,
+.tool-detail .muted,
+.inspector-footer,
+.login-story-footer,
+.eyebrow.light,
+.login-form-wrap > .eyebrow,
+.login-note,
+.login-form-side > footer,
+.settings-content > .eyebrow,
+.section-heading p,
+.count-badge,
+.environment-grid dt,
+.permission-note {
+  font-size: 0.75rem;
+}
+.login-form-wrap form > label,
+.password-form > label {
+  font-size: 0.875rem;
+}
+.composer-disclaimer {
+  line-height: 1.6;
+  text-align: center;
+}
+@media (max-width: 680px) {
+  .sidebar {
+    visibility: hidden;
+  }
+  .sidebar.mobile-open {
+    visibility: visible;
+  }
+}

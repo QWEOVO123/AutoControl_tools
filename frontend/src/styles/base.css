@@ -1,0 +1,90 @@
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+button,
+input,
+textarea {
+  font: inherit;
+}
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+button {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+button,
+a,
+input,
+textarea {
+  outline-offset: 4px;
+}
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--accent);
+}
+a {
+  color: inherit;
+  text-decoration: none;
+}
+button {
+  color: inherit;
+}
+button svg,
+a svg {
+  flex-shrink: 0;
+}
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+button {
+  border: 0;
+  background: none;
+}
+input,
+textarea {
+  color: inherit;
+}
+::selection {
+  background: #f7d4c0;
+}
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: #d7d9e1;
+  border-radius: 8px;
+}
+.muted {
+  color: var(--muted);
+}
+.mono,
+code,
+pre {
+  font-family: 'Cascadia Code', Consolas, 'Courier New', monospace;
+}
+.danger-text {
+  color: #c95a59 !important;
+}
+.success-text {
+  color: #348b74;
+}
+.spin {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
