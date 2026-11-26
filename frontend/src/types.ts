@@ -18,10 +18,14 @@ export interface ToolTrace {
   started_at?: number
   finished_at?: number
 }
+export type ReasoningEffort = 'none' | 'low' | 'high' | 'max'
+
 export interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
+  reasoning?: string | null
+  thinking?: boolean
   status: string
   created_at: number
   tool_events: ToolTrace[]
@@ -45,6 +49,7 @@ export interface SystemInfo {
 export type RunEvent =
   | { type: 'run.started'; run_id: string; message_id: string }
   | { type: 'message.delta'; text: string }
+  | { type: 'reasoning.delta'; text: string }
   | { type: 'tool.started' | 'tool.completed'; tool: ToolTrace }
   | {
       type: 'run.completed' | 'run.cancelled' | 'run.failed'

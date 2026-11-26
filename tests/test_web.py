@@ -6,7 +6,9 @@ import tempfile
 from threading import Thread
 import time
 import unittest
+from unittest.mock import patch
 
+import httpx2
 from fastapi.testclient import TestClient
 from langchain.agents import create_agent
 from langchain_core.language_models import BaseChatModel
@@ -14,6 +16,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from sqlalchemy import select
 
+from my_ai_agent.LLM_init.deepseek_init import AgentChatDeepSeek
 from my_ai_agent.web.app import create_app
 from my_ai_agent.web.config import Settings
 from my_ai_agent.web.models import User
@@ -75,7 +78,8 @@ class WebTests(unittest.TestCase):
         self.assertEqual(self.client.post("/api/conversations").status_code, 403)
         self.assertEqual(self.client.get("/api/auth/me").json()["username"], "tester")
         self.assertEqual(self.client.get("/api/system", headers={"Host": "untrusted.example"}).status_code, 400)
-        self.assertEqual(len(self.client.get("/api/system").json()["tools"]), 10)
+        tools = {item["name"] for item in self.client.get("/api/system").json()["tools"]}
+        self.assertTrue({"job_start", "job_output", "job_cancel", "sleep", "math_compute", "execute_python"} <= tools)
         token = self.client.cookies.get("agent_session")
         self.assertEqual(self.client.post("/api/auth/logout", headers=self.headers).status_code, 200)
         self.client.cookies.set("agent_session", token)
@@ -209,6 +213,87 @@ class CheckpointPersistenceTests(unittest.TestCase):
                         self.assertIn('turns=1', response.text)
                         detail = client.get(f"/api/conversations/{conversation}").json()
                         self.assertEqual(len(detail["messages"]), 4)
+
+
+class DeepSeekThinkingTests(unittest.TestCase):
+    def test_thinking_stream_tools_and_effort_switching(self):
+        requests = []
+
+        def deepseek(request):
+            body = json.loads(request.content)
+            requests.append(body)
+            self.assertEqual(request.url.path, "/chat/completions")
+            self.assertTrue(body["stream"])
+            self.assertNotIn("thinking", body)
+            is_first = len(requests) == 1
+            delta = []
+            if body["reasoning_effort"] != "none":
+                delta.extend([
+                    {"role": "assistant", "reasoning_content": "第一段"},
+                    {"reasoning_content": "推理"},
+                ])
+            if is_first:
+                delta.append({"tool_calls": [{
+                    "index": 0,
+                    "id": "multiply_test",
+                    "type": "function",
+                    "function": {"name": "multiply", "arguments": '{"a": 3, "b": 4}'},
+                }]})
+            else:
+                delta.append({"role": "assistant", "content": "最终回答"})
+            chunks = [
+                {"id": f"mock-{len(requests)}", "object": "chat.completion.chunk",
+                 "created": 0, "model": "deepseek-flash",
+                 "choices": [{"index": 0, "delta": item, "finish_reason": None}]}
+                for item in delta
+            ]
+            chunks.append({
+                **chunks[-1],
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls" if is_first else "stop"}],
+            })
+            stream = "".join(f"data: {json.dumps(chunk)}\n\n" for chunk in chunks)
+            return httpx2.Response(
+                200, text=stream + "data: [DONE]\n\n",
+                headers={"Content-Type": "text/event-stream"},
+            )
+
+        def create_test_model(**kwargs):
+            return AgentChatDeepSeek(
+                **kwargs, http_async_client=httpx2.AsyncClient(transport=httpx2.MockTransport(deepseek)),
+                api_base="https://deepseek.test",
+            )
+
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+            "os.environ", {"DEEPSEEK_API_KEY": "offline-test-key", "DEEPSEEK_MODEL": "deepseek-flash"}
+        ), patch("my_ai_agent.LLM_init.deepseek_init.AgentChatDeepSeek", side_effect=create_test_model):
+            settings = Settings(_env_file=None, data_dir=Path(directory), cookie_secure=False)
+            with TestClient(create_app(settings)) as client:
+                client.app.state.auth.set_password("tester", PASSWORD, create=True)
+                login = client.post("/api/auth/login", json={"username": "tester", "password": PASSWORD})
+                headers = {"X-CSRF-Token": login.json()["csrf_token"]}
+                conversation = client.post("/api/conversations", headers=headers).json()["id"]
+                path = f"/api/conversations/{conversation}/runs"
+
+                invalid = client.post(path, headers=headers, json={"content": "hi", "reasoning_effort": "medium"})
+                self.assertEqual(invalid.status_code, 422)
+                for effort in ("max", "low", "none", "high"):
+                    response = client.post(path, headers=headers, json={"content": "multiply", "reasoning_effort": effort})
+                    output = events(response)
+                    self.assertEqual(output[-1]["type"], "run.completed", response.text)
+                    self.assertEqual("".join(x["text"] for x in output if x["type"] == "message.delta"), "最终回答")
+                    thinking = "".join(x["text"] for x in output if x["type"] == "reasoning.delta")
+                    expected = {"max": "第一段推理\n\n第一段推理", "none": ""}
+                    self.assertEqual(thinking, expected.get(effort, "第一段推理"))
+                    reply = client.get(f"/api/conversations/{conversation}").json()["messages"][-1]
+                    self.assertEqual(reply["reasoning"], thinking or None)
+                    self.assertEqual(reply["content"], "最终回答")
+
+        self.assertEqual([request["reasoning_effort"] for request in requests], ["max", "max", "low", "none", "high"])
+        self.assertEqual(requests[1]["messages"][-1]["role"], "tool")
+        self.assertEqual(requests[1]["messages"][-1]["content"], "12.0")
+        self.assertEqual(requests[1]["messages"][-2]["reasoning_content"], "第一段推理")
+        assistants = [item for item in requests[-1]["messages"] if item["role"] == "assistant"]
+        self.assertEqual([item["reasoning_content"] for item in assistants], ["第一段推理", "第一段推理", "第一段推理", ""])
 
 
 if __name__ == "__main__":

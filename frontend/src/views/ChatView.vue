@@ -19,6 +19,7 @@ import { useChat } from '../stores/chat'
 import { useAuth } from '../stores/auth'
 import ChatMessage from '../components/ChatMessage.vue'
 import ToolCard from '../components/ToolCard.vue'
+import type { ReasoningEffort } from '../types'
 
 const chat = useChat(),
   auth = useAuth(),
@@ -29,6 +30,7 @@ const messages = computed(() => chat.messages[id.value] ?? [])
 const conversation = computed(() => chat.conversations.find((item) => item.id === id.value))
 const traces = computed(() => messages.value.flatMap((message) => message.tool_events))
 const running = computed(() => chat.streamingId === id.value || chat.remoteRunning[id.value])
+const reasoningEffort = ref<ReasoningEffort>('none')
 const draft = ref(''),
   error = ref(''),
   loading = ref(false),
@@ -84,7 +86,10 @@ watch(
 watch(
   () =>
     messages.value
-      .map((message) => `${message.content}:${message.status}:${message.tool_events.length}`)
+      .map(
+        (message) =>
+          `${message.content.length}:${message.reasoning?.length ?? 0}:${message.status}:${message.tool_events.length}`,
+      )
       .join(''),
   async () => {
     if (follow.value) {
@@ -103,6 +108,7 @@ function suggest(text: string) {
 }
 async function submit() {
   const text = draft.value.trim()
+  const effort = reasoningEffort.value
   if (!text || chat.streamingId || loading.value) return
   error.value = ''
   follow.value = true
@@ -114,7 +120,7 @@ async function submit() {
       await router.replace(`/chat/${target}`)
     }
     draft.value = ''
-    await chat.send(target, text)
+    await chat.send(target, text, effort)
   } catch (e) {
     error.value = e instanceof Error ? e.message : '执行失败'
   }
@@ -220,6 +226,15 @@ function keydown(event: KeyboardEvent) {
                 }}</span></span
               >
               <div class="composer-controls">
+                <label class="effort-picker">
+                  <span>思考强度</span>
+                  <select v-model="reasoningEffort">
+                    <option value="none">关闭</option>
+                    <option value="low">低</option>
+                    <option value="high">高</option>
+                    <option value="max">最高</option>
+                  </select>
+                </label>
                 <span class="keyboard-hint">Enter 发送 · Shift + Enter 换行</span
                 ><button
                   v-if="running"

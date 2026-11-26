@@ -3,7 +3,7 @@ import time
 from fastapi import HTTPException
 from sqlalchemy import select
 
-from ..models import Conversation, Message, Run
+from ..models import Conversation, Message, MessageReasoning, Run
 from ..schemas import ConversationOutput, message_output
 
 
@@ -33,9 +33,20 @@ class ConversationService:
     def detail(self, user_id, conversation_id):
         with self.database.session() as db:
             item = self.owned(db, user_id, conversation_id)
-            messages = db.scalars(select(Message).where(Message.conversation_id == item.id).order_by(Message.created_at, Message.id))
+            messages = db.execute(
+                select(Message, MessageReasoning.content)
+                .outerjoin(MessageReasoning, MessageReasoning.message_id == Message.id)
+                .where(Message.conversation_id == item.id)
+                .order_by(Message.created_at, Message.id)
+            )
             errors = {run.message_id: run.error for run in db.scalars(select(Run).where(Run.conversation_id == item.id))}
-            return {"conversation": ConversationOutput.model_validate(item), "messages": [{**message_output(message), "error": errors.get(message.id)} for message in messages]}
+            return {
+                "conversation": ConversationOutput.model_validate(item),
+                "messages": [
+                    {**message_output(message), "reasoning": reasoning, "error": errors.get(message.id)}
+                    for message, reasoning in messages
+                ],
+            }
 
     def rename(self, user_id, conversation_id, title):
         title = title.strip()

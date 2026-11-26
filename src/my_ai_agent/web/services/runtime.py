@@ -9,8 +9,17 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 from ...Agents.core import init_agent
-from ..models import Message, Run
+from ...LLM_init.deepseek_init import ReasoningEffort
+from ...Tools.jobs import JOBS
+from ..models import Message, MessageReasoning, Run
 from .conversations import ConversationService
+
+
+def redact_secrets(text):
+    for key, secret in os.environ.items():
+        if len(secret) >= 8 and re.search(r"api.?key|password|secret|access.?token", key, re.I):
+            text = text.replace(secret, "[已隐藏]")
+    return text
 
 
 def public_data(value):
@@ -21,9 +30,7 @@ def public_data(value):
         return [public_data(item) for item in value]
     text = str(value) if not isinstance(value, (str, int, float, bool, type(None))) else value
     if isinstance(text, str):
-        for key, secret in os.environ.items():
-            if len(secret) >= 8 and re.search(r"api.?key|password|secret|access.?token", key, re.I):
-                text = text.replace(secret, "[已隐藏]")
+        text = redact_secrets(text)
         return text[:18000] + ("\n[内容已截断]" if len(text) > 18000 else "")
     return text
 
@@ -38,19 +45,24 @@ class AgentRuntime:
         self.checkpointer = checkpointer
         self.settings = settings
         self.agent_factory = agent_factory
-        self.agent = None
+        self.agents = {}
         self.agent_lock = asyncio.Lock()
         self.guard = asyncio.Lock()
         self.active = {}
 
-    async def get_agent(self):
+    async def get_agent(self, effort: ReasoningEffort):
         async with self.agent_lock:
-            if self.agent is None:
-                factory = self.agent_factory or (lambda saver: init_agent(checkpointer=saver, probe=False))
-                self.agent = await asyncio.to_thread(factory, self.checkpointer)
-            return self.agent
+            if effort not in self.agents:
+                if self.agent_factory is not None:
+                    agent = await asyncio.to_thread(self.agent_factory, self.checkpointer)
+                else:
+                    agent = await asyncio.to_thread(
+                        init_agent, checkpointer=self.checkpointer, probe=False, reasoning_effort=effort
+                    )
+                self.agents[effort] = agent
+            return self.agents[effort]
 
-    async def start(self, user_id, conversation_id, content):
+    async def start(self, user_id, conversation_id, content, effort: ReasoningEffort = "none"):
         content = content.strip()
         if not content:
             raise HTTPException(422, "消息不能为空。")
@@ -74,11 +86,11 @@ class AgentRuntime:
                     conversation.title = content[:40]
                 handle = {"id": run.id, "message_id": reply.id, "owner": user_id, "task": None, "cancelled": False}
             self.active[conversation_id] = handle
-        return self._stream(conversation_id, content, handle)
+        return self._stream(conversation_id, content, handle, effort)
 
-    async def _stream(self, conversation_id, content, handle):
+    async def _stream(self, conversation_id, content, handle, effort):
         queue = asyncio.Queue(maxsize=256)
-        task = asyncio.create_task(self._execute(conversation_id, content, handle, queue))
+        task = asyncio.create_task(self._execute(conversation_id, content, handle, queue, effort))
         handle["task"] = task
         try:
             yield sse({"type": "run.started", "run_id": handle["id"], "message_id": handle["message_id"]})
@@ -121,16 +133,18 @@ class AgentRuntime:
                 if message:
                     message.status = "cancelled"
 
-    async def _execute(self, conversation_id, content, handle, queue):
+    async def _execute(self, conversation_id, content, handle, queue, effort):
         text = []
+        reasoning = []
         tools = {}
         status = "completed"
         error = None
-        streamed_models = set()
+        streamed_text = set()
+        streamed_reasoning = set()
         try:
             if handle["cancelled"]:
                 raise asyncio.CancelledError()
-            agent = await self.get_agent()
+            agent = await self.get_agent(effort)
             async for event in agent.astream_events(
                 {"messages": [{"role": "user", "content": content}]},
                 config={"configurable": {"thread_id": f"{handle['owner']}:{conversation_id}"}, "recursion_limit": 64},
@@ -140,12 +154,20 @@ class AgentRuntime:
                 data = event.get("data", {})
                 if kind in {"on_chat_model_stream", "on_chat_model_end"}:
                     model_id = str(event.get("run_id", ""))
-                    if kind == "on_chat_model_end" and model_id in streamed_models:
+                    streamed = kind == "on_chat_model_stream"
+                    chunk = data.get("chunk") if streamed else data.get("output")
+                    fragment = getattr(chunk, "additional_kwargs", {}).get("reasoning_content")
+                    if effort != "none" and isinstance(fragment, str) and fragment and (streamed or model_id not in streamed_reasoning):
+                        separator = "\n\n" if reasoning and model_id not in streamed_reasoning else ""
+                        streamed_reasoning.add(model_id)
+                        delta = separator + redact_secrets(fragment)
+                        reasoning.append(delta)
+                        await queue.put({"type": "reasoning.delta", "text": delta})
+                    if not streamed and model_id in streamed_text:
                         continue
-                    chunk = data.get("chunk") if kind == "on_chat_model_stream" else data.get("output")
                     for block in getattr(chunk, "content_blocks", []):
                         if block.get("type") == "text" and block.get("text"):
-                            streamed_models.add(model_id)
+                            streamed_text.add(model_id)
                             delta = public_data(block["text"])
                             text.append(delta)
                             await queue.put({"type": "message.delta", "text": delta})
@@ -183,6 +205,8 @@ class AgentRuntime:
                     message.content = "".join(text)
                     message.status = status
                     message.tool_events = json.dumps(list(tools.values()), ensure_ascii=False)
+                    if reasoning:
+                        db.add(MessageReasoning(message_id=message.id, content=redact_secrets("".join(reasoning))))
                 if run:
                     run.status = status
                     run.error = error
@@ -203,6 +227,7 @@ class AgentRuntime:
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        await asyncio.to_thread(JOBS.close)
 
     def recover(self):
         with self.database.session() as db:

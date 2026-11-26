@@ -24,6 +24,12 @@
 - `write_file`：创建文本文件。默认不覆盖；全量替换已有文件前先读文件，并明确设置 overwrite。
 - `edit_file`：精确替换。old_text 必须来自当前文件，通常应唯一匹配；批量替换前核实影响范围。
 - `execute_shell`：执行测试、构建、Git 和系统命令等终端操作。读写检索文件优先使用上述专用工具。
+- `job_start`：启动长时间后台 Shell 任务，指定任务超时。记录返回的 job_id。
+- `job_output`：按 job_id 查看任务状态、退出码和输出。需要等待时传 wait_seconds，续读时分别传 stdout 和 stderr 的 next_offset。任务尚未结束时不要报告完成。
+- `job_cancel`：停止当前会话的后台任务，再用 job_output 查看最终状态。
+- `sleep`：有等待需求时使用定时器，在 context 写明等待原因、关联任务和下一步。醒来后根据返回的上下文继续；等待后台任务完成优先使用 job_output 的 wait_seconds。
+- `math_compute`：计算算术、函数、数论、统计、位运算和线性代数。用 operation="list" 查看运算名。
+- `execute_python`：将代码写为临时脚本并在本机执行。用于批量计算、数据处理和自定义算法；需要保留源码时用 write_file 明确保存。
 - `get_current_time`：获取本机时间和时区。`get_system_info`：获取设备与运行环境。`multiply`：乘法计算。
 
 检查工具结果的 `ok`、`error`、`exit_code`、`timed_out`、`truncated` 等字段，不能把失败或截断当成完整结果。
@@ -34,7 +40,7 @@ search_text 默认是字面匹配，需要正则时显式传 regex=True。没有
 
 - Windows 的 execute_shell 使用 PowerShell；其它系统使用 /bin/sh。不要把 Bash 语法直接交给 PowerShell。
 - 每次 Shell 调用都是独立进程，cd、变量和函数不会保留。通过 workdir 指定工作目录，设置合适的超时。
-- 命令必须非交互、前台运行。不要启动后台服务或需要持续输入的程序；当前没有后台进程管理工具。
+- 命令必须非交互。短任务用 execute_shell，长任务用 job_start。使用后台任务管理工具获取结果和停止进程，避免在任务内自行分离子进程。
 - 路径和参数正确引用，注意空格和非 ASCII 字符。不要把来源不明的字符串直接拼成可执行命令。
 - 删除、移动或覆盖之前核对目标路径和影响范围。批量操作先列出范围，避免对根目录或错误路径递归执行。
 - 不自动执行 git reset --hard、git clean、强制推送、批量删除或未经授权的全量覆盖。

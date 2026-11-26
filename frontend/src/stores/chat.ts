@@ -3,7 +3,14 @@ import { ref } from 'vue'
 import { api, streamRequest } from '../api/client'
 import { readSSE } from '../api/sse'
 import { useAuth } from './auth'
-import type { Conversation, ConversationDetail, Message, RunEvent, SystemInfo } from '../types'
+import type {
+  Conversation,
+  ConversationDetail,
+  Message,
+  ReasoningEffort,
+  RunEvent,
+  SystemInfo,
+} from '../types'
 
 export const useChat = defineStore('chat', () => {
   const conversations = ref<Conversation[]>([])
@@ -62,7 +69,7 @@ export const useChat = defineStore('chat', () => {
       remoteRunning.value[id] = false
     }
   }
-  async function send(id: string, content: string) {
+  async function send(id: string, content: string, reasoningEffort: ReasoningEffort = 'none') {
     if (streamingId.value) throw new Error('请等待当前任务完成，或先停止生成。')
     controller = new AbortController()
     const currentGeneration = generation
@@ -73,6 +80,7 @@ export const useChat = defineStore('chat', () => {
       id: crypto.randomUUID(),
       role: 'assistant',
       content: '',
+      thinking: reasoningEffort !== 'none',
       status: 'running',
       created_at: Date.now() / 1000,
       tool_events: [],
@@ -97,8 +105,14 @@ export const useChat = defineStore('chat', () => {
         accepted = true
         item.id = event.message_id
         reply.id = event.message_id
-      } else if (event.type === 'message.delta') item.content += event.text
-      else if (event.type === 'tool.started' || event.type === 'tool.completed') {
+      } else if (event.type === 'reasoning.delta') {
+        item.reasoning = (item.reasoning ?? '') + event.text
+        item.thinking = true
+      } else if (event.type === 'message.delta') {
+        item.content += event.text
+        item.thinking = false
+      } else if (event.type === 'tool.started' || event.type === 'tool.completed') {
+        item.thinking = false
         const index = item.tool_events.findIndex((tool) => tool.id === event.tool.id)
         if (index >= 0) item.tool_events[index] = event.tool
         else item.tool_events.push(event.tool)
@@ -111,7 +125,7 @@ export const useChat = defineStore('chat', () => {
     try {
       const response = await streamRequest(
         `/conversations/${id}/runs`,
-        { content },
+        { content, reasoning_effort: reasoningEffort },
         csrf()!,
         controller.signal,
       )

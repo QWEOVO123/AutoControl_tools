@@ -6,16 +6,17 @@ from langchain.agents import create_agent
 from langgraph.checkpoint.memory import InMemorySaver
 
 from ..LLM_init import LLM_init
+from ..LLM_init.deepseek_init import ReasoningEffort
 from ..Tools import TOOLS
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 
 
-def init_agent(*, checkpointer=None, probe: bool = True):
+def init_agent(*, checkpointer=None, probe: bool = True, reasoning_effort: ReasoningEffort = "none"):
     """初始化 AI Agent。"""
 
-    llm = LLM_init(check_connection=probe)
+    llm = LLM_init(check_connection=probe, reasoning_effort=reasoning_effort)
 
     system_prompt = (
         BASE_DIR / "Prompts" / "system.md"

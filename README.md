@@ -67,6 +67,10 @@ uv run my-ai-agent
 | 工具 | 用途 |
 | --- | --- |
 | `execute_shell` | 执行非交互命令，返回 stdout、stderr、退出码和超时状态 |
+| `job_start` / `job_output` / `job_cancel` | 启动、查询和取消后台任务。任务超时可自定，设为 null 时持续运行。输出支持按游标续读 |
+| `sleep` | 定时暂停当前 Agent，唤醒时返回实际等待时长和传入的上下文 |
+| `math_compute` | 算术、实数函数、数论、组合、统计、位运算、进制和线性代数。用 `operation="list"` 查看目录 |
+| `execute_python` | 用项目 Python 解释器执行临时脚本，支持参数、后台执行与输出续读 |
 | `list_directory` | 查看目录直接子项 |
 | `find_files` | 按 glob 检索文件名 |
 | `search_text` | 按字面文本或 Python 正则搜索文件内容，返回行号 |
@@ -79,8 +83,10 @@ uv run my-ai-agent
 或“新建一个计算函数并运行验证”。相对路径基于启动命令所在目录。
 
 Windows Shell 优先使用 `pwsh`，否则使用 Windows PowerShell；其它系统使用 `/bin/sh`。
-每次 Shell 调用独立，默认超时 30 秒，最多 120 秒；超时会尝试终止进程树。
-输出分别限制 stdout/stderr 长度，不支持交互命令和后台服务。
+前台 `execute_shell` 每次调用独立，默认超时 30 秒，最多 120 秒。超时会尝试终止进程树。
+输出分别限制 stdout/stderr 长度，进程不接受交互输入。
+后台任务限当前会话访问，状态和输出保存在当前后端进程中。每路输出保留最近的 256,000 字符，可分页读取。
+Web 停止生成会取消当前的 `sleep` 等待，后台任务可用 `job_cancel` 单独停止。后端重启后，等待不会恢复。
 
 文件检索跳过凭据、常见缓存、虚拟环境和符号链接，不依赖额外安装 ripgrep。
 文本读取限 UTF-8、单文件最多 1 MiB；大文件或二进制文件需要专门处理。

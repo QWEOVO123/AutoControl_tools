@@ -33,6 +33,47 @@ def _stop_process_tree(process: subprocess.Popen) -> None:
     process.wait()
 
 
+def _working_directory(workdir: str) -> Path:
+    directory = Path(workdir).expanduser().resolve()
+    if not directory.is_dir():
+        raise ValueError("workdir 必须是已存在的目录。")
+    return directory
+
+
+def _process_options(directory: Path) -> dict:
+    platform_options = (
+        {"creationflags": subprocess.CREATE_NO_WINDOW}
+        if os.name == "nt" else {"start_new_session": True}
+    )
+    return {
+        "cwd": directory,
+        "env": {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"},
+        "stdin": subprocess.DEVNULL,
+        **platform_options,
+    }
+
+
+def _shell_command(command: str) -> list[str]:
+    if not command.strip():
+        raise ValueError("command 不能为空。")
+    if os.name != "nt":
+        return ["/bin/sh", "-c", command]
+
+    shell = shutil.which("pwsh") or shutil.which("powershell")
+    if not shell:
+        raise ValueError("找不到 PowerShell，请安装 PowerShell 或检查 PATH。")
+    script = (
+        "$ErrorActionPreference = 'Stop'\n"
+        "$global:LASTEXITCODE = 0\n"
+        "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)\n"
+        "$OutputEncoding = [Console]::OutputEncoding\n"
+        f"{command}\n"
+        "exit $LASTEXITCODE\n"
+    )
+    encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
+    return [shell, "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded]
+
+
 @tool
 @tool_errors
 def execute_shell(
@@ -45,39 +86,15 @@ def execute_shell(
     返回实际 Shell、目录、exit_code、stdout、stderr、timed_out、truncated；ok 仅在成功退出时为 True。
     Shell 拥有当前用户权限，并非沙箱；只执行已获用户授权的操作，不读取或打印密钥。
     """
-    if not command.strip():
-        raise ValueError("command 不能为空。")
     check_limit(timeout_seconds, "timeout_seconds", 120)
     check_limit(max_output_chars, "max_output_chars", 20000)
-    directory = Path(workdir).expanduser().resolve()
-    if not directory.is_dir():
-        raise ValueError("workdir 必须是已存在的目录。")
-    if os.name == "nt":
-        shell = shutil.which("pwsh") or shutil.which("powershell")
-        if not shell:
-            raise ValueError("找不到 PowerShell，请安装 PowerShell 或检查 PATH。")
-        script = (
-            "$ErrorActionPreference = 'Stop'\n"
-            "$global:LASTEXITCODE = 0\n"
-            "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)\n"
-            "$OutputEncoding = [Console]::OutputEncoding\n"
-            f"{command}\n"
-            "exit $LASTEXITCODE\n"
-        )
-        encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
-        args = [shell, "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded]
-        options = {"creationflags": subprocess.CREATE_NO_WINDOW}
-    else:
-        shell = "/bin/sh"
-        args = [shell, "-c", command]
-        options = {"start_new_session": True}
-    environment = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
+    directory = _working_directory(workdir)
+    args = _shell_command(command)
     timed_out = False
     # Files avoid accumulating an unbounded command output in Python memory.
     with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
         with subprocess.Popen(
-            args, cwd=directory, env=environment, stdin=subprocess.DEVNULL,
-            stdout=stdout, stderr=stderr, **options,
+            args, stdout=stdout, stderr=stderr, **_process_options(directory),
         ) as process:
             try:
                 process.wait(timeout=timeout_seconds)
@@ -92,7 +109,7 @@ def execute_shell(
                 truncated = truncated or len(value) > max_output_chars
                 output.append(value[:max_output_chars])
     return {
-        "ok": process.returncode == 0 and not timed_out, "shell": shell,
+        "ok": process.returncode == 0 and not timed_out, "shell": args[0],
         "workdir": str(directory), "exit_code": process.returncode,
         "stdout": output[0], "stderr": output[1],
         "timed_out": timed_out, "truncated": truncated,

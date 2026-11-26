@@ -10,7 +10,9 @@ router = APIRouter(prefix="/conversations", tags=["runs"])
 
 @router.post("/{conversation_id}/runs")
 async def run(conversation_id: str, payload: RunInput, request: Request, context: AuthContext = Depends(authorized_write)):
-    stream = await request.app.state.runtime.start(context.user_id, conversation_id, payload.content)
+    stream = await request.app.state.runtime.start(
+        context.user_id, conversation_id, payload.content, payload.reasoning_effort
+    )
     return StreamingResponse(stream, media_type="text/event-stream", headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
 

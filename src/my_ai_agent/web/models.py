@@ -47,6 +47,12 @@ class Message(Base):
     created_at: Mapped[float] = mapped_column(Float, default=time.time)
 
 
+class MessageReasoning(Base):
+    __tablename__ = "message_reasoning"
+    message_id: Mapped[str] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"), primary_key=True)
+    content: Mapped[str] = mapped_column(Text)
+
+
 class Run(Base):
     __tablename__ = "runs"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=identifier)

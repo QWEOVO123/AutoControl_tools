@@ -170,7 +170,7 @@ class AgentIntegrationTests(unittest.TestCase):
         output = json.loads(tool_message.content)
         self.assertTrue(output["ok"])
         self.assertEqual(output["content"], "1: verified tool content")
-        self.assertEqual(len({tool.name for tool in TOOLS}), 10)
+        self.assertEqual(len({tool.name for tool in TOOLS}), len(TOOLS))
 
 
 if __name__ == "__main__":

@@ -2,6 +2,8 @@ import json
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ..LLM_init.deepseek_init import ReasoningEffort
+
 
 class LoginInput(BaseModel):
     username: str = Field(min_length=1, max_length=32)
@@ -19,6 +21,7 @@ class TitleInput(BaseModel):
 
 class RunInput(BaseModel):
     content: str = Field(min_length=1, max_length=8000)
+    reasoning_effort: ReasoningEffort = "none"
 
 
 class ConversationOutput(BaseModel):

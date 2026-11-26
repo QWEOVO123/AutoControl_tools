@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Copy, Check, Wrench, LoaderCircle } from '@lucide/vue'
+import { Copy, Check, Wrench, LoaderCircle, ChevronRight } from '@lucide/vue'
 import type { Message } from '../types'
 import MarkdownContent from './MarkdownContent.vue'
 defineProps<{ message: Message; username: string }>()
@@ -34,6 +34,15 @@ const statusLabel: Record<string, string> = {
         {{ message.role === 'assistant' ? 'Agent' : '你'
         }}<span v-if="message.role === 'assistant'" class="agent-tag">LOCAL</span>
       </div>
+      <details v-if="message.reasoning" class="reasoning-disclosure">
+        <summary>
+          <ChevronRight class="reasoning-chevron" :size="15" aria-hidden="true" />
+          <span>{{
+            message.status === 'running' && message.thinking ? '正在思考' : '思考过程'
+          }}</span>
+        </summary>
+        <div class="reasoning-text">{{ message.reasoning }}</div>
+      </details>
       <div v-if="message.tool_events.length" class="tool-summary">
         <Wrench :size="14" /><button @click="$emit('inspect')">
           {{ message.tool_events.length }} 次工具调用<span>查看执行记录</span>
@@ -44,9 +53,21 @@ const statusLabel: Record<string, string> = {
         :content="message.content"
       />
       <div v-else-if="message.role === 'user'" class="user-content">{{ message.content }}</div>
-      <div v-if="message.status === 'running' && !message.content" class="thinking">
+      <div
+        v-if="
+          message.status === 'running' &&
+          !message.content &&
+          !(message.reasoning && message.thinking)
+        "
+        class="thinking"
+        role="status"
+      >
         <LoaderCircle class="spin" :size="15" />{{
-          message.tool_events.length ? '正在处理工具结果…' : '正在思考…'
+          message.thinking
+            ? '正在思考'
+            : message.tool_events.length
+              ? '正在处理工具结果…'
+              : '正在生成…'
         }}
       </div>
       <div
