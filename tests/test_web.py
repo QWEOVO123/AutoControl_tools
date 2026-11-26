@@ -220,6 +220,8 @@ class DeepSeekThinkingTests(unittest.TestCase):
         requests = []
 
         def deepseek(request):
+            if request.url.path == "/models":
+                return httpx2.Response(200, json={"data": [{"id": "deepseek-flash", "context_window": 1048576}]})
             body = json.loads(request.content)
             requests.append(body)
             self.assertEqual(request.url.path, "/chat/completions")
@@ -260,6 +262,7 @@ class DeepSeekThinkingTests(unittest.TestCase):
         def create_test_model(**kwargs):
             return AgentChatDeepSeek(
                 **kwargs, http_async_client=httpx2.AsyncClient(transport=httpx2.MockTransport(deepseek)),
+                http_client=httpx2.Client(transport=httpx2.MockTransport(deepseek)),
                 api_base="https://deepseek.test",
             )
 

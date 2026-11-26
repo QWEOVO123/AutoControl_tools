@@ -1,6 +1,6 @@
 import asyncio
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 
 from ...Tools.jobs import JOBS
 from ..dependencies import authenticated, authorized_write
@@ -33,14 +33,16 @@ def rename(conversation_id: str, payload: TitleInput, request: Request, context:
 
 
 @router.delete("/{conversation_id}")
-async def delete(conversation_id: str, request: Request, context: AuthContext = Depends(authorized_write)):
+async def delete(conversation_id: str, request: Request, background: BackgroundTasks, context: AuthContext = Depends(authorized_write)):
     runtime = request.app.state.runtime
     async with runtime.guard:
         with request.app.state.database.session() as db:
             request.app.state.conversations.owned(db, context.user_id, conversation_id)
         if conversation_id in runtime.active:
             raise HTTPException(409, "请先停止这个会话中的任务。")
-        request.app.state.conversations.delete(context.user_id, conversation_id)
+        attachments = request.app.state.attachments
+        remote_ids = await asyncio.to_thread(attachments.delete_conversation, context.user_id, conversation_id)
+        background.add_task(attachments.delete_remote, remote_ids)
         thread_id = f"{context.user_id}:{conversation_id}"
         await asyncio.to_thread(JOBS.close, thread_id)
         await runtime.checkpointer.adelete_thread(thread_id)

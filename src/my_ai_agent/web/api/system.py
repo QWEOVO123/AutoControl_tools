@@ -2,8 +2,9 @@ import os
 import platform
 from pathlib import Path
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
+from ...Agents.context_archive import context_tools
 from ...Tools import TOOLS
 from ..dependencies import authenticated
 
@@ -16,12 +17,13 @@ def health():
 
 
 @router.get("/system", dependencies=[Depends(authenticated)])
-def system():
+def system(request: Request):
+    tools = [*TOOLS, *context_tools(request.app.state.runtime.archive)]
     return {
         "platform": f"{platform.system()} {platform.release()}",
         "python": platform.python_version(), "workspace": str(Path.cwd()),
         "model": os.getenv("DEEPSEEK_MODEL", "deepseek-flash"),
         "model_configured": bool(os.getenv("DEEPSEEK_API_KEY")),
         "transport": "HTTP / SSE", "elevation_enabled": False,
-        "tools": [{"name": item.name, "description": item.description.splitlines()[0]} for item in TOOLS],
+        "tools": [{"name": item.name, "description": item.description.splitlines()[0]} for item in tools],
     }

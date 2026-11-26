@@ -19,6 +19,19 @@ export interface ToolTrace {
   finished_at?: number
 }
 export type ReasoningEffort = 'none' | 'low' | 'high' | 'max'
+export type OutputMode = 'text' | 'json'
+
+export interface Attachment {
+  id: string
+  name: string
+  size: number
+  media_type: string
+}
+export interface TokenUsage {
+  input_tokens: number
+  output_tokens: number
+  cache_read_tokens: number | null
+}
 
 export interface Message {
   id: string
@@ -26,6 +39,9 @@ export interface Message {
   content: string
   reasoning?: string | null
   thinking?: boolean
+  preparing?: boolean
+  attachments?: Attachment[]
+  usage?: TokenUsage | null
   status: string
   created_at: number
   tool_events: ToolTrace[]
@@ -50,6 +66,9 @@ export type RunEvent =
   | { type: 'run.started'; run_id: string; message_id: string }
   | { type: 'message.delta'; text: string }
   | { type: 'reasoning.delta'; text: string }
+  | { type: 'attachment.preparing' }
+  | { type: 'attachment.ready' }
+  | { type: 'usage.completed'; usage: TokenUsage }
   | { type: 'tool.started' | 'tool.completed'; tool: ToolTrace }
   | {
       type: 'run.completed' | 'run.cancelled' | 'run.failed'

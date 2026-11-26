@@ -11,15 +11,18 @@ import {
   FileCode2,
   Sparkles,
   Wrench,
-  Cpu,
   CircleHelp,
   LoaderCircle,
+  Paperclip,
+  FileText,
+  Globe,
+  Braces,
 } from '@lucide/vue'
 import { useChat } from '../stores/chat'
 import { useAuth } from '../stores/auth'
 import ChatMessage from '../components/ChatMessage.vue'
 import ToolCard from '../components/ToolCard.vue'
-import type { ReasoningEffort } from '../types'
+import type { OutputMode, ReasoningEffort } from '../types'
 
 const chat = useChat(),
   auth = useAuth(),
@@ -31,14 +34,36 @@ const conversation = computed(() => chat.conversations.find((item) => item.id ==
 const traces = computed(() => messages.value.flatMap((message) => message.tool_events))
 const running = computed(() => chat.streamingId === id.value || chat.remoteRunning[id.value])
 const reasoningEffort = ref<ReasoningEffort>('none')
+const outputMode = ref<OutputMode>('text')
 const draft = ref(''),
   error = ref(''),
   loading = ref(false),
-  inspector = ref(false),
+  inspector = ref(window.matchMedia('(min-width: 1180px)').matches),
   help = ref(false)
 const scrolling = ref<HTMLElement>(),
   composer = ref<HTMLTextAreaElement>(),
   follow = ref(true)
+const selectedFiles = ref<File[]>([])
+const fileInput = ref<HTMLInputElement>()
+const richLayout = ref(false)
+const uploading = ref(false)
+const supportedFiles =
+  '.png,.jpg,.jpeg,.gif,.webp,.pdf,.doc,.docx,.ppt,.pptx,.txt,.md,.log,.csv,.json,.yaml,.yml,.xls,.xlsx'
+const showLayoutOption = computed(() =>
+  selectedFiles.value.some((file) => /\.(pdf|docx?|pptx?)$/i.test(file.name)),
+)
+const attachmentsAvailable = computed(() => !chat.system || chat.system.model === 'deepseek-flash')
+const workspaceName = computed(
+  () => chat.system?.workspace.split(/[\\/]/).filter(Boolean).pop() ?? '本地工作区',
+)
+const canSend = computed(
+  () =>
+    Boolean(draft.value.trim() || selectedFiles.value.length) &&
+    !running.value &&
+    !chat.streamingId &&
+    !loading.value &&
+    !uploading.value,
+)
 const suggestions = [
   {
     icon: FolderSearch,
@@ -59,10 +84,10 @@ const suggestions = [
     text: '在当前项目目录运行 uv pip check，并解释检查结果。',
   },
   {
-    icon: Cpu,
-    title: '了解环境',
-    subtitle: '查看系统、解释器与当前目录',
-    text: '查看当前运行环境，包括操作系统、Python 解释器和工作目录。',
+    icon: Globe,
+    title: '查官方文档',
+    subtitle: '搜索上游资料并附来源链接',
+    text: '查阅当前项目主要依赖的官方文档，核对当前用法并给出来源链接。',
   },
 ]
 watch(
@@ -70,6 +95,8 @@ watch(
   async (value) => {
     error.value = ''
     draft.value = ''
+    selectedFiles.value = []
+    richLayout.value = false
     follow.value = true
     if (!value) return
     loading.value = true
@@ -106,23 +133,73 @@ function suggest(text: string) {
   draft.value = text
   composer.value?.focus()
 }
+function addFiles(files: File[]) {
+  if (!attachmentsAvailable.value || uploading.value) return
+  error.value = ''
+  for (const file of files) {
+    if (selectedFiles.value.length >= 4) {
+      error.value = '每条消息最多添加 4 个附件。'
+      break
+    }
+    const extension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase()
+    if (
+      !supportedFiles.split(',').includes(extension) ||
+      !file.size ||
+      file.size > 12 * 1024 * 1024
+    ) {
+      error.value = `无法添加 ${file.name}。请选择支持的格式，单个文件最多 12 MiB。`
+    } else {
+      selectedFiles.value.push(file)
+    }
+  }
+}
+function chooseFiles(event: Event) {
+  const input = event.target as HTMLInputElement
+  addFiles(Array.from(input.files ?? []))
+  input.value = ''
+}
+function pasteFiles(event: ClipboardEvent) {
+  const files = Array.from(event.clipboardData?.files ?? [])
+  if (files.length && attachmentsAvailable.value && !uploading.value) {
+    event.preventDefault()
+    addFiles(files)
+  }
+}
 async function submit() {
   const text = draft.value.trim()
   const effort = reasoningEffort.value
-  if (!text || chat.streamingId || loading.value) return
+  const format = outputMode.value
+  const files = [...selectedFiles.value]
+  const rich = richLayout.value
+  if (!canSend.value) return
   error.value = ''
   follow.value = true
+  uploading.value = true
+  let target = id.value
   try {
-    let target = id.value
     if (!target) {
       const item = await chat.create()
       target = item.id
       await router.replace(`/chat/${target}`)
     }
+    const attachments = files.length ? await chat.uploadAttachments(target, files, rich) : []
+    if (id.value !== target) {
+      await chat.discardAttachments(target, attachments)
+      return
+    }
     draft.value = ''
-    await chat.send(target, text, effort)
+    selectedFiles.value = []
+    uploading.value = false
+    await chat.send(target, text, effort, attachments, format)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '执行失败'
+    if (id.value === target) {
+      if (!draft.value) draft.value = text
+      if (!selectedFiles.value.length) selectedFiles.value = files
+      richLayout.value = rich
+      error.value = e instanceof Error ? e.message : '执行失败'
+    }
+  } finally {
+    uploading.value = false
   }
 }
 async function stop() {
@@ -163,10 +240,11 @@ function keydown(event: KeyboardEvent) {
       <section class="chat-column">
         <div ref="scrolling" class="message-scroll" @scroll="trackScroll">
           <div v-if="!messages.length && !loading" class="welcome">
-            <div class="welcome-symbol"><Sparkles :size="29" /></div>
-            <div class="eyebrow">A LITTLE CONTEXT. A LOT OF POSSIBILITY.</div>
-            <h1>让想法落到代码里。</h1>
-            <p>读懂文件，调用工具，推进你的下一步。<br />从一个问题，或一件想完成的事开始。</p>
+            <div class="workspace-path">
+              <Terminal :size="16" /> <span>~ / {{ workspaceName }}</span>
+            </div>
+            <h1>Agent 工作台</h1>
+            <p>检查项目、排查故障，或添加截图和日志一起分析。</p>
             <div class="suggestion-grid">
               <button
                 v-for="item in suggestions"
@@ -178,10 +256,6 @@ function keydown(event: KeyboardEvent) {
                 ><span>{{ item.subtitle }}</span>
               </button>
             </div>
-            <div class="welcome-capabilities">
-              <span><Wrench :size="14" />{{ chat.system?.tools.length ?? '—' }} 个本地工具</span
-              ><span><Terminal :size="14" />本地执行</span><span>HTTP · SSE</span>
-            </div>
           </div>
           <div v-else-if="loading" class="page-loading">
             <LoaderCircle class="spin" :size="22" />正在读取会话…
@@ -191,6 +265,7 @@ function keydown(event: KeyboardEvent) {
               v-for="message in messages"
               :key="message.id"
               :message="message"
+              :conversation-id="id"
               :username="auth.user?.username ?? 'U'"
               @inspect="inspector = true"
             />
@@ -210,6 +285,28 @@ function keydown(event: KeyboardEvent) {
             模型尚未配置，请在后端环境中设置 DEEPSEEK_API_KEY 后重启。
           </div>
           <form class="composer" @submit.prevent="submit">
+            <div v-if="selectedFiles.length" class="composer-attachments">
+              <div
+                v-for="(file, index) in selectedFiles"
+                :key="`${file.name}-${index}`"
+                class="attachment-chip"
+              >
+                <FileText :size="15" /><span>{{ file.name }}</span>
+                <button
+                  type="button"
+                  :aria-label="`移除 ${file.name}`"
+                  :disabled="uploading"
+                  @click="selectedFiles.splice(index, 1)"
+                >
+                  <X :size="14" />
+                </button>
+              </div>
+              <label v-if="showLayoutOption" class="layout-option">
+                <input v-model="richLayout" type="checkbox" :disabled="uploading" />
+                解析文档中的图表
+              </label>
+              <span class="upload-status">发送后由 DeepSeek 处理</span>
+            </div>
             <textarea
               ref="composer"
               v-model="draft"
@@ -218,13 +315,44 @@ function keydown(event: KeyboardEvent) {
               rows="3"
               maxlength="8000"
               @keydown="keydown"
+              @paste="pasteFiles"
             />
             <div class="composer-footer">
-              <span class="composer-context"
-                ><Terminal :size="14" /><span>{{
-                  chat.system?.workspace.split(/[\\/]/).filter(Boolean).pop() ?? '本地工作区'
-                }}</span></span
-              >
+              <div class="composer-left">
+                <input
+                  ref="fileInput"
+                  type="file"
+                  multiple
+                  hidden
+                  :accept="supportedFiles"
+                  @change="chooseFiles"
+                />
+                <button
+                  type="button"
+                  class="icon-button attachment-button"
+                  aria-label="添加图片或文件"
+                  title="添加图片或文件，也可以粘贴截图"
+                  :disabled="!attachmentsAvailable || uploading"
+                  @click="fileInput?.click()"
+                >
+                  <Paperclip :size="17" />
+                </button>
+                <button
+                  type="button"
+                  class="icon-button format-button"
+                  :class="{ pressed: outputMode === 'json' }"
+                  :aria-pressed="outputMode === 'json'"
+                  aria-label="JSON 输出"
+                  title="JSON 输出"
+                  @click="outputMode = outputMode === 'text' ? 'json' : 'text'"
+                >
+                  <Braces :size="17" />
+                </button>
+                <span class="composer-context"
+                  ><Terminal :size="14" /><span>{{ workspaceName }}</span></span
+                >
+                <span v-if="uploading" class="upload-status" role="status">正在上传…</span>
+              </div>
               <div class="composer-controls">
                 <label class="effort-picker">
                   <span>思考强度</span>
@@ -249,7 +377,7 @@ function keydown(event: KeyboardEvent) {
                   type="submit"
                   class="send-button"
                   aria-label="发送消息"
-                  :disabled="!draft.trim() || !!chat.streamingId || loading"
+                  :disabled="!canSend"
                 >
                   <Send :size="19" />
                 </button>
@@ -277,15 +405,13 @@ function keydown(event: KeyboardEvent) {
             <X :size="18" />
           </button>
         </div>
-        <p class="inspector-description">跟随 Agent 的每一次工具调用。</p>
         <div v-if="!traces.length" class="inspector-empty">
-          <Terminal :size="30" /><strong>执行过程会出现在这里</strong>
-          <p>发送任务后，查看工具参数、运行状态和返回结果。</p>
+          <Terminal :size="25" /><strong>等待工具调用</strong>
+          <p>这里显示命令输出、任务状态和网页来源。</p>
         </div>
         <div v-else class="tool-list">
           <ToolCard v-for="tool in traces" :key="tool.id" :tool="tool" />
         </div>
-        <div class="inspector-footer"><span class="tiny-square" />工具输出与模型回答分开展示</div>
       </aside>
     </div>
   </div>

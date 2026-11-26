@@ -9,6 +9,7 @@ from .file_tools import (
 from .math_tools import math_compute
 from .shell_tools import execute_shell
 from .task_tools import execute_python, job_cancel, job_output, job_start, sleep
+from .web_tools import web_fetch, web_search
 from .system_tools import (
     get_current_time,
     get_system_info,
@@ -16,6 +17,8 @@ from .system_tools import (
 
 )
 TOOLS = [
+    web_search,
+    web_fetch,
     execute_shell,
     job_start,
     job_output,

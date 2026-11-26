@@ -1,11 +1,31 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { Copy, Check, Wrench, LoaderCircle, ChevronRight } from '@lucide/vue'
+import { computed, ref } from 'vue'
+import {
+  Copy,
+  Check,
+  Wrench,
+  LoaderCircle,
+  ChevronRight,
+  FileText,
+  Image,
+  Database,
+} from '@lucide/vue'
 import type { Message } from '../types'
 import MarkdownContent from './MarkdownContent.vue'
-defineProps<{ message: Message; username: string }>()
+import SpeakButton from './SpeakButton.vue'
+const props = defineProps<{ message: Message; username: string; conversationId: string }>()
 defineEmits<{ inspect: [] }>()
 const copied = ref(false)
+const isJson = computed(() => {
+  const value = props.message.content.trim()
+  if (!value.startsWith('{') || !value.endsWith('}')) return false
+  try {
+    JSON.parse(value)
+    return true
+  } catch {
+    return false
+  }
+})
 async function copy(content: string) {
   try {
     await navigator.clipboard.writeText(content)
@@ -48,11 +68,28 @@ const statusLabel: Record<string, string> = {
           {{ message.tool_events.length }} 次工具调用<span>查看执行记录</span>
         </button>
       </div>
+      <div v-if="message.role === 'assistant' && isJson" class="markdown-content structured-output">
+        <span>JSON</span>
+        <pre>{{ message.content }}</pre>
+      </div>
       <MarkdownContent
-        v-if="message.role === 'assistant' && message.content"
+        v-else-if="message.role === 'assistant' && message.content"
         :content="message.content"
       />
       <div v-else-if="message.role === 'user'" class="user-content">{{ message.content }}</div>
+      <div v-if="message.attachments?.length" class="message-attachments">
+        <a
+          v-for="file in message.attachments"
+          :key="file.id"
+          class="attachment-chip"
+          :href="`/api/conversations/${conversationId}/attachments/${file.id}`"
+          download
+        >
+          <Image v-if="file.media_type.startsWith('image/')" :size="16" />
+          <FileText v-else :size="16" />
+          <span>{{ file.name }}</span>
+        </a>
+      </div>
       <div
         v-if="
           message.status === 'running' &&
@@ -63,11 +100,13 @@ const statusLabel: Record<string, string> = {
         role="status"
       >
         <LoaderCircle class="spin" :size="15" />{{
-          message.thinking
-            ? '正在思考'
-            : message.tool_events.length
-              ? '正在处理工具结果…'
-              : '正在生成…'
+          message.preparing
+            ? '正在解析附件…'
+            : message.thinking
+              ? '正在思考'
+              : message.tool_events.length
+                ? '正在处理工具结果…'
+                : '正在生成…'
         }}
       </div>
       <div
@@ -88,6 +127,15 @@ const statusLabel: Record<string, string> = {
         >
           <Check v-if="copied" :size="15" /><Copy v-else :size="15" />
         </button>
+        <span v-if="message.usage" class="message-usage">
+          <Database :size="14" aria-hidden="true" />
+          输入 {{ message.usage.input_tokens.toLocaleString() }} · 输出
+          {{ message.usage.output_tokens.toLocaleString() }}
+          <template v-if="message.usage.cache_read_tokens !== null">
+            · 缓存命中 {{ message.usage.cache_read_tokens.toLocaleString() }}
+          </template>
+        </span>
+        <SpeakButton v-if="message.status === 'completed' && !isJson" :text="message.content" />
       </div>
     </div>
   </article>

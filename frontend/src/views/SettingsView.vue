@@ -5,6 +5,7 @@ import { ShieldCheck, Wrench, Server, KeyRound } from '@lucide/vue'
 import { useChat } from '../stores/chat'
 import { useAuth } from '../stores/auth'
 import { api } from '../api/client'
+import AppearanceSettings from '../components/AppearanceSettings.vue'
 const chat = useChat(),
   auth = useAuth(),
   router = useRouter()
@@ -61,10 +62,10 @@ async function changePassword() {
     </header>
     <div class="settings-scroll">
       <div class="settings-content">
-        <span class="eyebrow">WORKSPACE PREFERENCES</span>
-        <h1>让工作环境一目了然。</h1>
-        <p class="settings-intro">查看本地运行状态，管理账户与可用工具。</p>
+        <h1>工作台设置</h1>
+        <p class="settings-intro">运行环境、界面外观和账户。</p>
         <div v-if="error" class="error-banner" role="alert">{{ error }}</div>
+        <AppearanceSettings />
         <section class="settings-section">
           <div class="section-heading">
             <Server :size="20" />

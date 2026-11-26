@@ -6,20 +6,19 @@ import re
 import time
 
 from fastapi import HTTPException
+from langchain_core.messages import HumanMessage
 from sqlalchemy import select
 
+from ...Agents.context import COMPACTION_TAG
+from ...Agents.context_archive import ContextArchive, describe_message
 from ...Agents.core import init_agent
-from ...LLM_init.deepseek_init import ReasoningEffort
+from ...LLM_init.deepseek_init import OutputMode, ReasoningEffort
+from ...LLM_init.model_catalog import DeepSeekModelCatalog
 from ...Tools.jobs import JOBS
-from ..models import Message, MessageReasoning, Run
+from ...deepseek_api import ATTACHMENT_REFERENCES, DeepSeekError
+from ...redaction import redact_secrets
+from ..models import ContextRecord, Message, MessageReasoning, MessageUsage, Run
 from .conversations import ConversationService
-
-
-def redact_secrets(text):
-    for key, secret in os.environ.items():
-        if len(secret) >= 8 and re.search(r"api.?key|password|secret|access.?token", key, re.I):
-            text = text.replace(secret, "[已隐藏]")
-    return text
 
 
 def public_data(value):
@@ -40,32 +39,44 @@ def sse(event):
 
 
 class AgentRuntime:
-    def __init__(self, database, checkpointer, settings, agent_factory=None):
+    def __init__(self, database, checkpointer, settings, agent_factory=None, *, attachments=None):
         self.database = database
         self.checkpointer = checkpointer
         self.settings = settings
         self.agent_factory = agent_factory
+        self.attachments = attachments
+        self.archive = ContextArchive(database, web_threads=True)
+        self.model_catalog = DeepSeekModelCatalog()
         self.agents = {}
         self.agent_lock = asyncio.Lock()
         self.guard = asyncio.Lock()
         self.active = {}
 
-    async def get_agent(self, effort: ReasoningEffort):
+    async def get_agent(self, effort: ReasoningEffort, output_mode: OutputMode):
+        key = (effort, output_mode)
         async with self.agent_lock:
-            if effort not in self.agents:
+            if key not in self.agents:
                 if self.agent_factory is not None:
                     agent = await asyncio.to_thread(self.agent_factory, self.checkpointer)
                 else:
                     agent = await asyncio.to_thread(
-                        init_agent, checkpointer=self.checkpointer, probe=False, reasoning_effort=effort
+                        init_agent, checkpointer=self.checkpointer, probe=False,
+                        reasoning_effort=effort, output_mode=output_mode,
+                        archive=self.archive, context_token_budget=self.settings.context_token_budget,
+                        context_keep_tokens=self.settings.context_keep_tokens, model_catalog=self.model_catalog,
                     )
-                self.agents[effort] = agent
-            return self.agents[effort]
+                self.agents[key] = agent
+            return self.agents[key]
 
-    async def start(self, user_id, conversation_id, content, effort: ReasoningEffort = "none"):
+    async def start(
+        self, user_id, conversation_id, content, effort: ReasoningEffort = "none",
+        attachment_ids=(), output_mode: OutputMode = "text",
+    ):
         content = content.strip()
-        if not content:
+        if not content and not attachment_ids:
             raise HTTPException(422, "消息不能为空。")
+        if attachment_ids and os.getenv("DEEPSEEK_MODEL", "deepseek-flash") != "deepseek-flash":
+            raise HTTPException(422, "附件问答需要 deepseek-flash。")
         async with self.guard:
             with self.database.session() as db:
                 conversation = ConversationService.owned(db, user_id, conversation_id)
@@ -74,17 +85,30 @@ class AgentRuntime:
                 if len(self.active) >= self.settings.max_parallel_runs:
                     raise HTTPException(429, "运行中的任务较多，请稍后重试。")
                 now = time.time()
-                db.add(Message(conversation_id=conversation_id, role="user", content=content, created_at=now))
+                user_message = Message(conversation_id=conversation_id, role="user", content=content, created_at=now)
+                db.add(user_message)
                 reply = Message(conversation_id=conversation_id, role="assistant", status="running", created_at=now + 0.000001)
                 db.add(reply)
                 db.flush()
+                if attachment_ids:
+                    self.attachments.bind(db, conversation_id, user_message.id, attachment_ids)
+                thread_id = f"{user_id}:{conversation_id}"
+                archived_input = HumanMessage(content=content, additional_kwargs={"attachment_ids": attachment_ids})
+                db.add(ContextRecord(
+                    thread_id=thread_id, id=user_message.id, conversation_id=conversation_id, kind="user",
+                    content=describe_message(archived_input), created_at=now,
+                ))
                 run = Run(conversation_id=conversation_id, message_id=reply.id)
                 db.add(run)
                 db.flush()
                 conversation.updated_at = time.time()
                 if conversation.title == "新会话":
-                    conversation.title = content[:40]
-                handle = {"id": run.id, "message_id": reply.id, "owner": user_id, "task": None, "cancelled": False}
+                    conversation.title = content[:40] or "附件问答"
+                handle = {
+                    "id": run.id, "message_id": reply.id, "task": None,
+                    "user_message_id": user_message.id, "thread_id": thread_id, "cancelled": False,
+                    "attachment_ids": attachment_ids, "output_mode": output_mode,
+                }
             self.active[conversation_id] = handle
         return self._stream(conversation_id, content, handle, effort)
 
@@ -141,21 +165,54 @@ class AgentRuntime:
         error = None
         streamed_text = set()
         streamed_reasoning = set()
+        usage_by_call = {}
+        usage = None
+        references_token = None
+        output_mode = handle["output_mode"]
+        json_segments = {}
+        final_model_id = ""
+        final_finish_reason = None
         try:
             if handle["cancelled"]:
                 raise asyncio.CancelledError()
-            agent = await self.get_agent(effort)
+            agent = await self.get_agent(effort, output_mode)
+            attachment_ids = handle["attachment_ids"]
+            user_message = {"role": "user", "content": content, "id": handle["user_message_id"]}
+            if self.attachments and os.getenv("DEEPSEEK_MODEL", "deepseek-flash") == "deepseek-flash":
+                if attachment_ids:
+                    await queue.put({"type": "attachment.preparing"})
+                references = await self.attachments.references(conversation_id, attachment_ids)
+                references_token = ATTACHMENT_REFERENCES.set(references)
+                if attachment_ids:
+                    await queue.put({"type": "attachment.ready"})
+            if attachment_ids:
+                user_message = HumanMessage(
+                    id=handle["user_message_id"],
+                    content=content or "请阅读这条消息的附件并概述要点。",
+                    additional_kwargs={"attachment_ids": list(attachment_ids)},
+                )
             async for event in agent.astream_events(
-                {"messages": [{"role": "user", "content": content}]},
-                config={"configurable": {"thread_id": f"{handle['owner']}:{conversation_id}"}, "recursion_limit": 64},
+                {"messages": [user_message]},
+                config={"configurable": {"thread_id": handle["thread_id"]}, "recursion_limit": 64},
                 version="v2",
             ):
                 kind = event["event"]
                 data = event.get("data", {})
+                if COMPACTION_TAG in event.get("tags", ()):
+                    if kind == "on_chat_model_end" and (tokens := getattr(data.get("output"), "usage_metadata", None)):
+                        usage_by_call[str(event["run_id"])] = tokens
+                    continue
                 if kind in {"on_chat_model_stream", "on_chat_model_end"}:
                     model_id = str(event.get("run_id", ""))
                     streamed = kind == "on_chat_model_stream"
                     chunk = data.get("chunk") if streamed else data.get("output")
+                    if output_mode == "json":
+                        final_model_id = model_id
+                        if not streamed:
+                            final_finish_reason = getattr(chunk, "response_metadata", {}).get("finish_reason")
+                    tokens = getattr(chunk, "usage_metadata", None)
+                    if tokens:
+                        usage_by_call[model_id] = tokens
                     fragment = getattr(chunk, "additional_kwargs", {}).get("reasoning_content")
                     if effort != "none" and isinstance(fragment, str) and fragment and (streamed or model_id not in streamed_reasoning):
                         separator = "\n\n" if reasoning and model_id not in streamed_reasoning else ""
@@ -169,8 +226,11 @@ class AgentRuntime:
                         if block.get("type") == "text" and block.get("text"):
                             streamed_text.add(model_id)
                             delta = public_data(block["text"])
-                            text.append(delta)
-                            await queue.put({"type": "message.delta", "text": delta})
+                            if output_mode == "json":
+                                json_segments.setdefault(model_id, []).append(block["text"])
+                            else:
+                                text.append(delta)
+                                await queue.put({"type": "message.delta", "text": delta})
                 elif kind == "on_tool_start":
                     tool_id = str(event["run_id"])
                     item = {"id": tool_id, "name": event["name"], "input": public_data(data.get("input")), "status": "running", "started_at": time.time()}
@@ -189,12 +249,38 @@ class AgentRuntime:
                     item = tools.setdefault(tool_id, {"id": tool_id, "name": event["name"], "input": None})
                     item.update(output=public_data(output), status="failed" if failed else "completed", finished_at=time.time())
                     await queue.put({"type": "tool.completed", "tool": item.copy()})
+            if output_mode == "json":
+                try:
+                    if final_finish_reason == "length":
+                        raise ValueError("truncated")
+                    result = json.loads(redact_secrets("".join(json_segments.get(final_model_id, []))))
+                    if not isinstance(result, dict):
+                        raise ValueError("expected object")
+                    formatted = json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False)
+                except (ValueError, RecursionError) as exc:
+                    raise DeepSeekError("模型没有返回完整的 JSON 对象。请调整提示词后重试。") from exc
+                text.append(formatted)
+                await queue.put({"type": "message.delta", "text": formatted})
+            if usage_by_call:
+                counts = list(usage_by_call.values())
+                hits = [entry.get("input_token_details", {}).get("cache_read") for entry in counts]
+                usage = {
+                    "input_tokens": sum(entry["input_tokens"] for entry in counts),
+                    "output_tokens": sum(entry["output_tokens"] for entry in counts),
+                    "cache_read_tokens": sum(hits) if all(hit is not None for hit in hits) else None,
+                }
+                await queue.put({"type": "usage.completed", "usage": usage})
         except asyncio.CancelledError:
             status = "cancelled"
+        except DeepSeekError as exc:
+            status = "failed"
+            error = str(exc)
         except Exception as exc:
             status = "failed"
             error = public_data(str(exc))
         finally:
+            if references_token is not None:
+                ATTACHMENT_REFERENCES.reset(references_token)
             for item in tools.values():
                 if item["status"] == "running":
                     item["status"] = "interrupted"
@@ -205,8 +291,15 @@ class AgentRuntime:
                     message.content = "".join(text)
                     message.status = status
                     message.tool_events = json.dumps(list(tools.values()), ensure_ascii=False)
+                    if status == "completed" and usage:
+                        db.add(MessageUsage(message_id=message.id, **usage))
                     if reasoning:
                         db.add(MessageReasoning(message_id=message.id, content=redact_secrets("".join(reasoning))))
+                    if status != "completed" and message.content:
+                        db.add(ContextRecord(
+                            thread_id=handle["thread_id"], id=message.id, conversation_id=conversation_id,
+                            kind="assistant", content=redact_secrets(message.content), created_at=message.created_at,
+                        ))
                 if run:
                     run.status = status
                     run.error = error

@@ -10,6 +10,7 @@ export function createAppRouter(pinia: Pinia) {
       { path: '/', redirect: '/chat' },
       { path: '/chat/:id?', component: () => import('./views/ChatView.vue') },
       { path: '/settings', component: () => import('./views/SettingsView.vue') },
+      { path: '/media', component: () => import('./views/MediaView.vue') },
       { path: '/:pathMatch(.*)*', redirect: '/chat' },
     ],
   })

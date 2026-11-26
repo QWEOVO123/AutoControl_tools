@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     cookie_secure: bool | None = None
     session_hours: int = Field(default=24, ge=1, le=168)
     max_parallel_runs: int = Field(default=2, ge=1, le=8)
+    context_token_budget: int | None = Field(default=None, ge=4_096)
+    context_keep_tokens: int = Field(default=16_000, ge=800, le=120_000)
 
     @property
     def database_url(self) -> str:

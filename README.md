@@ -40,6 +40,18 @@ uv run my-ai-agent-web
 详细模块说明、事件协议和运行边界见 [Web 架构文档](docs/web-architecture.md)。
 Web 账户可执行本机工具，只向受信任的操作者开放；目前未提供系统沙箱或管理员提权。
 
+Web 输入框可以添加附件或直接粘贴截图，支持 `deepseek-flash`。每条消息最多 4 个文件，每个最多 12 MiB。
+附件在发送后上传至 DeepSeek，保留在所属会话中，便于继续追问。文件引用接近过期时会用本地副本续期。
+输入框的花括号按钮可启用 JSON 输出。回答下方显示上游提供的 Token 用量和缓存命中，也可以请求朗读。
+「文字与语音识别」支持图片或文档 OCR，以及 PCM WAV / Ogg Opus 文件转写。
+「设置与工具 → 背景与外观」支持自选背景图和恢复默认，图片保存在当前浏览器。
+
+Web 和 CLI 都支持长会话。接近输入预算时，Agent 先缩短较早的工具输出，仍超预算时把旧历史整理成摘要检查点。
+模型可以用 `context_search` 在当前会话按关键词找检查点、消息或日志，再用 `context_read` 按记录 ID 分页回读。
+Agent 初始化时从 DeepSeek 的 `/models` 读取模型窗口和输出上限。压缩阈值按窗口减去本次思考档位预留的输出和 10% 余量计算。
+元数据不可用时使用 120,000 Token 的估算输入预算。`AGENT_CONTEXT_TOKEN_BUDGET` 可设置更早压缩的输入上限，
+`AGENT_CONTEXT_KEEP_TOKENS` 可调整近期原文保留目标（默认 16,000 Token）。
+
 ## 安装和运行
 
 ```powershell
@@ -67,7 +79,9 @@ uv run my-ai-agent
 | 工具 | 用途 |
 | --- | --- |
 | `execute_shell` | 执行非交互命令，返回 stdout、stderr、退出码和超时状态 |
+| `web_search` / `web_fetch` | 通过 DeepSeek 检索公开网页或读取链接正文，工具记录中可查看来源 |
 | `job_start` / `job_output` / `job_cancel` | 启动、查询和取消后台任务。任务超时可自定，设为 null 时持续运行。输出支持按游标续读 |
+| `context_search` / `context_read` | 当前会话的关键词检索和原文回读，覆盖检查点、消息和已归档的工具输出 |
 | `sleep` | 定时暂停当前 Agent，唤醒时返回实际等待时长和传入的上下文 |
 | `math_compute` | 算术、实数函数、数论、组合、统计、位运算、进制和线性代数。用 `operation="list"` 查看目录 |
 | `execute_python` | 用项目 Python 解释器执行临时脚本，支持参数、后台执行与输出续读 |

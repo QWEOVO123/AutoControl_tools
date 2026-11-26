@@ -47,9 +47,16 @@ SSE 接口发送 `X-Accel-Buffering: no`，并发送心跳维持连接。
 
 ## 持久化与生命周期
 
-SQLAlchemy 管理 `.agent-data/app.sqlite3` 中的用户、登录、会话、消息和运行。
-LangGraph 的 AsyncSqliteSaver 管理 `checkpoints.sqlite3`，重启后可以继续原会话记忆。
-两类数据库均在本机忽略目录中；备份时需要同时保存，不能提交 Git。
+SQLAlchemy 管理 `.agent-data/app.sqlite3` 中的用户、登录、会话、消息、运行和上下文归档。
+LangGraph 将 Web 当前模型窗口写入 `checkpoints.sqlite3`，将 CLI 窗口写入 `cli-checkpoints.sqlite3`。
+重启后两种入口都能继续原会话。备份时同时保留对应的数据文件和附件目录。
+
+Agent 从 DeepSeek `/models` 读取模型窗口和输出上限，扣除当前思考档位需要的输出空间及 10% 的估算余量。
+每次模型调用前，Agent 对照预算估算当前请求，先将旧工具输出换成带记录 ID 的预览，
+再按需要生成摘要。摘要替换已经配对的旧消息区间，保留最近原文和当前用户请求。
+服务明确返回上下文超限时，可以缩小窗口后只重试模型调用一次。
+摘要、原始消息和工具已经返回的输出按会话保存在 `context_records`。
+搜索按字面关键词匹配，按命中偏移量分页回读。删除 Web 会话会同时清理对应的归档和 LangGraph 状态。
 
 Agent 按需初始化，因此未配置模型也能启动服务、登录和管理账户。
 单个会话同时只允许一个任务；默认全局最多两个，使用 `AGENT_MAX_PARALLEL_RUNS` 配置。

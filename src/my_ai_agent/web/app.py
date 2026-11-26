@@ -7,10 +7,11 @@ from fastapi.exceptions import RequestValidationError
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from .api import auth, conversations, runs, system
+from .api import attachments, auth, conversations, media, runs, system
 from .config import Settings
 from .database import Database
 from .security import AuthService
+from .services.attachments import AttachmentService
 from .services.conversations import ConversationService
 from .services.runtime import AgentRuntime
 
@@ -28,9 +29,10 @@ def create_app(settings: Settings | None = None, *, agent_factory=None):
         app.state.settings = settings
         app.state.auth = AuthService(database, settings)
         app.state.conversations = ConversationService(database)
+        app.state.attachments = AttachmentService(database, settings.data_dir)
         async with AsyncSqliteSaver.from_conn_string(str(settings.data_dir.resolve() / "checkpoints.sqlite3")) as saver:
             await saver.setup()
-            runtime = AgentRuntime(database, saver, settings, agent_factory)
+            runtime = AgentRuntime(database, saver, settings, agent_factory, attachments=app.state.attachments)
             runtime.recover()
             app.state.runtime = runtime
             try:
@@ -64,10 +66,10 @@ def create_app(settings: Settings | None = None, *, agent_factory=None):
         if request.url.path.startswith("/api/"):
             response.headers["Cache-Control"] = "no-store"
         else:
-            response.headers["Content-Security-Policy"] = "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
+            response.headers["Content-Security-Policy"] = "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
         return response
 
-    for router in (auth.router, conversations.router, runs.router, system.router):
+    for router in (auth.router, conversations.router, runs.router, system.router, attachments.router, media.router):
         app.include_router(router, prefix="/api")
 
     @app.get("/{path:path}", include_in_schema=False)

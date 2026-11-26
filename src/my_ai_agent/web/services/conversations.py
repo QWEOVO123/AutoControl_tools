@@ -1,10 +1,11 @@
+from collections import defaultdict
 import time
 
 from fastapi import HTTPException
 from sqlalchemy import select
 
-from ..models import Conversation, Message, MessageReasoning, Run
-from ..schemas import ConversationOutput, message_output
+from ..models import Attachment, Conversation, Message, MessageReasoning, MessageUsage, Run
+from ..schemas import ConversationOutput, attachment_output, message_output, usage_output
 
 
 class ConversationService:
@@ -34,17 +35,26 @@ class ConversationService:
         with self.database.session() as db:
             item = self.owned(db, user_id, conversation_id)
             messages = db.execute(
-                select(Message, MessageReasoning.content)
+                select(Message, MessageReasoning.content, MessageUsage)
                 .outerjoin(MessageReasoning, MessageReasoning.message_id == Message.id)
+                .outerjoin(MessageUsage, MessageUsage.message_id == Message.id)
                 .where(Message.conversation_id == item.id)
                 .order_by(Message.created_at, Message.id)
             )
             errors = {run.message_id: run.error for run in db.scalars(select(Run).where(Run.conversation_id == item.id))}
+            attached = defaultdict(list)
+            for file in db.scalars(select(Attachment).where(
+                Attachment.conversation_id == item.id, Attachment.message_id.is_not(None),
+            ).order_by(Attachment.created_at)):
+                attached[file.message_id].append(attachment_output(file))
             return {
                 "conversation": ConversationOutput.model_validate(item),
                 "messages": [
-                    {**message_output(message), "reasoning": reasoning, "error": errors.get(message.id)}
-                    for message, reasoning in messages
+                    {
+                        **message_output(message), "reasoning": reasoning, "error": errors.get(message.id),
+                        "attachments": attached[message.id], "usage": usage_output(usage) if usage else None,
+                    }
+                    for message, reasoning, usage in messages
                 ],
             }
 
@@ -58,7 +68,3 @@ class ConversationService:
             item.updated_at = time.time()
             db.flush()
             return ConversationOutput.model_validate(item)
-
-    def delete(self, user_id, conversation_id):
-        with self.database.session() as db:
-            db.delete(self.owned(db, user_id, conversation_id))

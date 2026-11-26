@@ -4,9 +4,11 @@ import { api, streamRequest } from '../api/client'
 import { readSSE } from '../api/sse'
 import { useAuth } from './auth'
 import type {
+  Attachment,
   Conversation,
   ConversationDetail,
   Message,
+  OutputMode,
   ReasoningEffort,
   RunEvent,
   SystemInfo,
@@ -69,7 +71,26 @@ export const useChat = defineStore('chat', () => {
       remoteRunning.value[id] = false
     }
   }
-  async function send(id: string, content: string, reasoningEffort: ReasoningEffort = 'none') {
+  async function uploadAttachments(id: string, files: File[], rich: boolean) {
+    const body = new FormData()
+    body.set('rich', String(rich))
+    for (const file of files) body.append('files', file)
+    return api<Attachment[]>(`/conversations/${id}/attachments`, { method: 'POST', body }, csrf())
+  }
+  async function discardAttachments(id: string, attachments: Attachment[]) {
+    await Promise.allSettled(
+      attachments.map((file) =>
+        api(`/conversations/${id}/attachments/${file.id}`, { method: 'DELETE' }, csrf()),
+      ),
+    )
+  }
+  async function send(
+    id: string,
+    content: string,
+    reasoningEffort: ReasoningEffort = 'none',
+    attachments: Attachment[] = [],
+    outputMode: OutputMode = 'text',
+  ) {
     if (streamingId.value) throw new Error('请等待当前任务完成，或先停止生成。')
     controller = new AbortController()
     const currentGeneration = generation
@@ -90,6 +111,7 @@ export const useChat = defineStore('chat', () => {
         id: userId,
         role: 'user',
         content,
+        attachments,
         status: 'completed',
         created_at: Date.now() / 1000,
         tool_events: [],
@@ -105,6 +127,10 @@ export const useChat = defineStore('chat', () => {
         accepted = true
         item.id = event.message_id
         reply.id = event.message_id
+      } else if (event.type === 'attachment.preparing' || event.type === 'attachment.ready') {
+        item.preparing = event.type === 'attachment.preparing'
+      } else if (event.type === 'usage.completed') {
+        item.usage = event.usage
       } else if (event.type === 'reasoning.delta') {
         item.reasoning = (item.reasoning ?? '') + event.text
         item.thinking = true
@@ -125,7 +151,12 @@ export const useChat = defineStore('chat', () => {
     try {
       const response = await streamRequest(
         `/conversations/${id}/runs`,
-        { content, reasoning_effort: reasoningEffort },
+        {
+          content,
+          reasoning_effort: reasoningEffort,
+          attachment_ids: attachments.map((file) => file.id),
+          output_mode: outputMode,
+        },
         csrf()!,
         controller.signal,
       )
@@ -137,8 +168,10 @@ export const useChat = defineStore('chat', () => {
       item.status =
         error instanceof DOMException && error.name === 'AbortError' ? 'cancelled' : 'failed'
       item.error = error instanceof Error ? error.message : '请求失败'
-      if (!accepted)
+      if (!accepted) {
         messages.value[id] = rows.filter((row) => row.id !== userId && row.id !== reply.id)
+        await discardAttachments(id, attachments)
+      }
       throw error
     } finally {
       if (generation === currentGeneration) {
@@ -172,6 +205,8 @@ export const useChat = defineStore('chat', () => {
     rename,
     remove,
     send,
+    uploadAttachments,
+    discardAttachments,
     stop,
     clear,
   }

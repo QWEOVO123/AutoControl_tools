@@ -11,6 +11,7 @@ import {
   Trash2,
   PanelLeftClose,
   Menu,
+  ScanText,
 } from '@lucide/vue'
 import { useChat } from '../stores/chat'
 import { useAuth } from '../stores/auth'
@@ -91,6 +92,13 @@ async function confirm(value: string) {
         chat.conversations.length
       }}</span></RouterLink
     >
+    <RouterLink
+      to="/media"
+      :class="['nav-item', { active: route.path === '/media' }]"
+      @click="mobileOpen = false"
+    >
+      <ScanText :size="18" /> 文字与语音识别
+    </RouterLink>
     <div class="sidebar-section-label recent-label">最近会话</div>
     <nav class="conversation-list" aria-label="历史会话">
       <p v-if="!chat.conversations.length" class="sidebar-empty">
