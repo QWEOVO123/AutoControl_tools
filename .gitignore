@@ -26,3 +26,10 @@ dist/
 .idea/
 .vscode/
 *.log
+
+# Web application dependencies and local data
+node_modules/
+.agent-data/
+*.sqlite3
+*.sqlite3-*
+*.tsbuildinfo

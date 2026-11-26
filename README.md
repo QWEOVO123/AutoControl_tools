@@ -2,6 +2,44 @@
 
 使用 DeepSeek、LangChain 和 LangGraph 的 Python 项目，需要 Python 3.13 或更高版本。
 
+现包含独立的 Vue 3 Web 工作台与 FastAPI 后端：账户登录、会话历史、流式回答、工具执行记录和账户设置。
+
+## Web 工作台
+
+在项目根目录执行：
+
+```powershell
+uv sync --locked
+uv run my-ai-agent-user create --username admin
+```
+
+命令会以隐藏输入的方式询问密码，至少 12 位；没有默认账户或默认密码。
+在本地 `.env` 中设置 `DEEPSEEK_API_KEY`，不要将真实密钥写入 `.env.example`。
+
+构建前端（需要受当前 Vite 支持的 Node.js，推荐 Node 24 LTS）：
+
+```powershell
+cd frontend
+npm ci
+npm run build
+cd ..
+uv run my-ai-agent-web
+```
+
+打开 <http://127.0.0.1:8000>。后端仅监听 `127.0.0.1`，构建后也能直接提供前端文件。
+如忘记密码，在本机执行 `uv run my-ai-agent-user reset-password --username admin`。
+
+前端开发时，在项目根目录启动后端，再在 `frontend/` 中运行 `npm run dev`。
+访问 Vite 输出的本机地址，`/api` 自动代理到 8000 端口。
+
+生产使用 [Nginx 配置示例](deploy/nginx.conf.example)，前后端同源提供 HTTPS。
+在本机 `.env` 配置 `AGENT_ALLOWED_HOSTS=["实际域名"]`、`AGENT_PUBLIC_ORIGIN=https://实际域名`
+和 `AGENT_COOKIE_SECURE=true`。Nginx 的工作是终止 HTTPS、提供静态文件并转发 `/api`，SSE 缓冲必须关闭。
+数据默认保存在被 Git 忽略的 `.agent-data/` 中，API Key 只在后端环境中加载。
+
+详细模块说明、事件协议和运行边界见 [Web 架构文档](docs/web-architecture.md)。
+Web 账户可执行本机工具，只向受信任的操作者开放；目前未提供系统沙箱或管理员提权。
+
 ## 安装和运行
 
 ```powershell
@@ -61,3 +99,5 @@ uv pip check
 uv build
 uv run python -m unittest discover -s tests -v
 ```
+
+前端检查：在 `frontend/` 中运行 `npm test` 和 `npm run build`。

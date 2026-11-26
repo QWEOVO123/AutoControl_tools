@@ -12,10 +12,10 @@ from ..Tools import TOOLS
 BASE_DIR = Path(__file__).resolve().parents[1]
 
 
-def init_agent():
+def init_agent(*, checkpointer=None, probe: bool = True):
     """初始化 AI Agent。"""
 
-    llm = LLM_init()
+    llm = LLM_init(check_connection=probe)
 
     system_prompt = (
         BASE_DIR / "Prompts" / "system.md"
@@ -33,7 +33,7 @@ def init_agent():
         model=llm,
         tools=TOOLS,
         system_prompt=system_prompt,
-        checkpointer=InMemorySaver(),
+        checkpointer=checkpointer if checkpointer is not None else InMemorySaver(),
     )
 
     print("[Agent] 初始化成功")
